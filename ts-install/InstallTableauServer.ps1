@@ -120,8 +120,12 @@ Start-Sleep -s 5
 
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") 
 
+# get port from json file
+$portString = Select-String -Path ".\ts_settings.json" -Pattern '"port" *:' | select-object -ExpandProperty Line
+$port = [regex]::match($portString, '(\d+)').Groups[1].Value
+
 # 5. Add an Administrator Account
-Start-Process -NoNewWindow -Wait tabcmd "initialuser --server http://localhost --username $($appProps."ts.admin.user") --password $($appProps."ts.admin.password")"
+Start-Process -NoNewWindow -Wait tabcmd "initialuser --server http://localhost:$($port) --username $($appProps."ts.admin.user") --password $($appProps."ts.admin.password")"
 Write-Log("Created admin account: $($appProps."admin.user")")
 
 Write-Log("Finished.")

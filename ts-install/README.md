@@ -27,16 +27,16 @@
     ```bash
     sudo bash install.sh <update OS?> <version>
     ```
-    Options:
+    Options:<br />
 
-    update OS?
-        0: do not update OS
-        1: update OS
+    update OS?<br />
+        0: do not update OS<br />
+        1: update OS<br />
     e.g.
     ```bash
     sudo bash install.sh 1 2020.2.4
     ```
-3. Press enter key when following message shows up.
+3. Press enter key when following message shows up.<br />
 If the script stopped because of some issue, you can resume it by typing a number of 1~6.
     ```
     [wcheng@cc58580b96c7484 ts-install]$ sudo bash linux_install.sh 0 2020.2.4
