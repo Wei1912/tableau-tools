@@ -1,5 +1,8 @@
 # Tableau Server Installation Automation
 ## How to use
+### Supported OS: 
+1. Windows server 2016 or later.
+2. Ubuntu, Debian, CentOS, Red Hat, Amazon Linux2, Oracle Linux
 
 ### Settings before installing
 
@@ -11,42 +14,33 @@
   * ts.admin.password
 
 ### Windows
-1. Run PowerShell as administrator and cd to "ts-install" folder
-2. Run command
+1. Run PowerShell as administrator.
+2. cd to "ts-install" folder.
+3. Run command
     ```
-    .\InstallTableauServer.ps1 <version>
+    .\InstallTableauServer.ps1 [Options]
     ```
     e.g.
     ```
-    .\InstallTableauServer.ps1 2020.2.4
+    .\InstallTableauServer.ps1 -v 2020.2.4
     ```
+    will install Tableau Server 2020.2.4<br />
+    Run InstallTableauServer.ps1 with -h or --help for detailed usage.
 
 ### Linux
-1. cd to "ts-install" directory
+1. cd to "ts-install" directory.
+   
 2. Run command
     ```bash
-    sudo bash install.sh <update OS?> <version>
+    sudo bash linux_install.sh [Options]
     ```
-    Options:<br />
-
-    update OS?<br />
-        0: do not update OS<br />
-        1: update OS<br />
     e.g.
     ```bash
-    sudo bash install.sh 1 2020.2.4
+    sudo bash linux_install.sh -v 2020.2.4
     ```
-3. Press enter key when following message shows up.<br />
-If the script stopped because of some issue, you can resume it by typing a number of 1~6.
+    will update OS and install Tableau Server 2020.2.4
+    ```bash
+    sudo bash linux_install.sh -v 2020.2.4 --no-update-os
     ```
-    [wcheng@cc58580b96c7484 ts-install]$ sudo bash linux_install.sh 0 2020.2.4
-    [sudo] password for wcheng:
-    Select a step to resume the process, or press enter to install TS from scratch.
-    1. Install TSM
-    2. Initialize TSM
-    3. Activate
-    4. Register
-    5. Configure and initialize initial node
-    6. Add an administrator account
-    ...
-    ```
+    will install Tableau Server 2020.2.4 without updating OS.<br />
+    Run linux_install.sh with -h or --help for detailed usage.

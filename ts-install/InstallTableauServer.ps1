@@ -11,16 +11,53 @@ function Write-Log($log) {
   Write-Host (Get-Date).ToString('yyyy/MM/dd HH:mm:ss') $log
 }
 
-# check Tableau Server version
-$version = $args[0].ToString()
-If([string]::IsNullOrEmpty($version)) {
-  throw 'Error: No version of Tableau Server.'
-}
-$vs = $version.Split('.')
-If($vs.Length -ne 3) {
-  throw 'Error: Invalid version.'
+# how to use
+$__usage="
+Usage: sudo bash install.sh [Options]
+
+Options:
+  -h, --help                Print usage
+  -v, --version <version>   Tableau Server version
+  --resume <n>              Resume installation after interruption
+        n:
+          1. Install TSM
+          2. Activate
+          3. Register
+          4. Configure and initialize initial node
+          5. Add an administrator account
+"
+
+# read arguments
+$tsVersion = ""
+$runStep = 0
+
+$i = 0
+while ($i -lt $args.Length) {
+  $arg = $args[$i]
+  if ($arg -eq "-v" -or $arg -eq "--version" ) {
+    $tsVersion = $args[++$i]
+  } elseif ($arg -eq "-h" -or $arg -eq "--help") {
+    Write-Host $__usage
+    exit
+  } elseif ($arg -eq "--resume") {
+    $runStep = $args[++$i]
+    if (-Not ($runStep -ge 1 -and $runStep -le 5)) {
+      throw 'Error: Please specify a number of 1-5 for --resume.'
+    }
+  } else {
+    throw "Error: Unrecognized argument: $arg"
+  }
+  $i++
 }
 
+# check Tableau Server version
+if ([string]::IsNullOrEmpty($tsVersion)) {
+  throw 'Error: No version of Tableau Server.'
+}
+$vs = $tsVersion.Split('.')
+if ($vs.Length -ne 3) {
+  throw 'Error: Invalid version.'
+}
 $versionArray = [int[]]::new($vs.Length)
 for ($i = 0; $i -lt $vs.Length; $i++) {
   $versionArray[$i] = [int]$vs[$i]
@@ -29,11 +66,11 @@ for ($i = 0; $i -lt $vs.Length; $i++) {
 # check config
 $appProps = ConvertFrom-StringData (get-content ./settings.properties -raw)
 $productKey = $appProps."ts.product.key"
-If([string]::IsNullOrEmpty($productKey)) {
+if ([string]::IsNullOrEmpty($productKey)) {
   throw 'Error: No product key.'
 }
 
-Write-Log("Will install Tableau Server $($version)")
+Write-Log("Will install Tableau Server $($tsVersion)")
 
 $curPath = $PSScriptRoot
 Set-Location -Path $curPath
@@ -41,91 +78,103 @@ Write-Log($PWD)
 
 # create download folder
 $downloadPath = Join-Path -Path $curPath -ChildPath "download"
-If(!(test-path $downloadPath))
+if (-Not (test-path $downloadPath))
 {
   $null = New-Item -ItemType Directory -Force -Path $downloadPath
 }
 
-# download installer
-$url = "https://downloads.tableau.com/esdalt/$($version)/TableauServer-64bit-$($version.Replace('.', '-')).exe"
-$installerFileName = $url.Substring($url.LastIndexOf("/") + 1)
-$installerFilePath = Join-Path -Path $downloadPath -ChildPath $installerFileName
+if ($runStep -le 1) {
+  Write-Log("1. Installing TSM ...")
+  # download installer
+  $url = "https://downloads.tableau.com/esdalt/$($tsVersion)/TableauServer-64bit-$($tsVersion.Replace('.', '-')).exe"
+  $installerFileName = $url.Substring($url.LastIndexOf("/") + 1)
+  $installerFilePath = Join-Path -Path $downloadPath -ChildPath $installerFileName
 
-If(Test-Path $installerFilePath -PathType Leaf) {
-  Write-Log("$($installerFilePath) exists, skip downloading")
-} else {
-  Write-Log("Downloading installer from $($url)")
-  (New-Object System.Net.WebClient).DownloadFile($url, $installerFilePath)
+  if (Test-Path $installerFilePath -PathType Leaf) {
+    Write-Log("$($installerFilePath) exists, skip downloading")
+  } else {
+    Write-Log("Downloading installer from $($url)")
+    (New-Object System.Net.WebClient).DownloadFile($url, $installerFilePath)
+    Start-Sleep -s 5
+    Write-Log("Downloading installer finished")
+  }
+
+  $arguments = [System.Collections.ArrayList]@("/silent")
+  if (($versionArray[0] -gt 2019) -or (($versionArray[0] -eq 2019) -and ($versionArray[1] -ge 4))) {
+    # 2019.4 or later
+    $arguments.Add("ACCEPTEULA=1")
+  } else {
+    $arguments.Add("/accepteula")
+  }
+  Write-Log("Installing TSM...")
+  $proc = Start-Process -NoNewWindow -Wait -FilePath $installerFilePath -ArgumentList $arguments
+  Start-Sleep -s 5
+  Write-Log("Installing TSM finished with exit code $($proc.ExitCode)")
 }
-
-# sleep for 5 seconds
-Start-Sleep -s 5
-
-# install
-# 1. Install TSM
-$arguments = [System.Collections.ArrayList]@("/silent")
-If(($versionArray[0] -gt 2019) -or (($versionArray[0] -eq 2019) -and ($versionArray[1] -ge 4))) {
-  # 2019.4 or later
-  $arguments.Add("ACCEPTEULA=1")
-} else {
-  $arguments.Add("/accepteula")
-}
-Write-Log("Installing TSM...")
-$proc = Start-Process -NoNewWindow -Wait -FilePath $installerFilePath -ArgumentList $arguments
-Write-Log($proc.ExitCode)
-
-# sleep for 5 seconds
-Start-Sleep -s 5
 
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") 
 
 Write-Log("Run tsm status -v")
 Start-Process -NoNewWindow -Wait tsm "status -v"
 
-# 2. Activate and Register Tableau Server
-Write-Log("Activating...")
-Start-Process -NoNewWindow -Wait tsm "licenses activate -k $($productKey)"
-Write-Log("Registering...")
-Start-Process -NoNewWindow -Wait tsm "register --file ./ts_registration.json"
-
-# 3. Configure Initial Node Settings
-Write-Log("Initializing...")
-Start-Process -NoNewWindow -Wait tsm "settings import -f ./ts_settings.json"
-Start-Process -NoNewWindow -Wait tsm "pending-changes apply --ignore-prompt"
-Start-Process -NoNewWindow -Wait tsm "initialize --start-server --request-timeout 1800"
-
-# 4. Install tabcmd
-# download tabcmd installer
-$url = "https://downloads.tableau.com/esdalt/$($version)/TableauServerTabcmd-64bit-$($version.Replace('.', '-')).exe"
-$installerFileName = $url.Substring($url.LastIndexOf("/") + 1)
-$installerFilePath = Join-Path -Path $downloadPath -ChildPath $installerFileName
-
-If(Test-Path $installerFilePath -PathType Leaf) {
-  Write-Log("$($installerFilePath) exists, skip downloading")
-} else {
-  Write-Log("Downloading installer from $($url)")
-  (New-Object System.Net.WebClient).DownloadFile($url, $installerFilePath)
+if ($runStep -le 2) {
+  Write-Log("2. Activating...")
+  Start-Process -NoNewWindow -Wait tsm "licenses activate -k $($productKey)"
+  Write-Log("Activating finished")
 }
 
-# sleep for 5 seconds
-Start-Sleep -s 5
+if ($runStep -le 3) {
+  Write-Log("3. Registering...")
+  Start-Process -NoNewWindow -Wait tsm "register --file ./ts_registration.json"
+  Write-Log("Registering finished")
+}
 
-# install tabcmd
-$proc = Start-Process -NoNewWindow -Wait $installerFilePath "/install /silent /norestart ACCEPTEULA=1"
-Write-Log($proc.ExitCode)
-Write-Log("Installed Tabcmd.")
+if ($runStep -le 4) {
+  Write-Log("4. Configuring and initializing initial node ...")
+  Start-Process -NoNewWindow -Wait tsm "settings import -f ./ts_settings.json"
+  Start-Process -NoNewWindow -Wait tsm "pending-changes apply --ignore-prompt"
+  Start-Process -NoNewWindow -Wait tsm "initialize --start-server --request-timeout 1800"
+  Write-Log("Configuring and initializing initial node finished")
+}
 
-# sleep for 5 seconds
-Start-Sleep -s 5
+if ($runStep -le 5) {
+  Write-Log("5. Adding an Administrator Account ...")
 
-$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") 
+  # download tabcmd installer
+  $url = "https://downloads.tableau.com/esdalt/$($tsVersion)/TableauServerTabcmd-64bit-$($tsVersion.Replace('.', '-')).exe"
+  $installerFileName = $url.Substring($url.LastIndexOf("/") + 1)
+  $installerFilePath = Join-Path -Path $downloadPath -ChildPath $installerFileName
 
-# get port from json file
-$portString = Select-String -Path ".\ts_settings.json" -Pattern '"port" *:' | select-object -ExpandProperty Line
-$port = [regex]::match($portString, '(\d+)').Groups[1].Value
+  If(Test-Path $installerFilePath -PathType Leaf) {
+    Write-Log("$($installerFilePath) exists, skip downloading")
+  } else {
+    Write-Log("Downloading tabcmd installer from $($url)")
+    (New-Object System.Net.WebClient).DownloadFile($url, $installerFilePath)
+    Start-Sleep -s 5
+    Write-Log("Downloading tabcmd installer finished")
+  }
 
-# 5. Add an Administrator Account
-Start-Process -NoNewWindow -Wait tabcmd "initialuser --server http://localhost:$($port) --username $($appProps."ts.admin.user") --password $($appProps."ts.admin.password")"
-Write-Log("Created admin account: $($appProps."admin.user")")
+  # install tabcmd
+  Write-Log("Installing tabcmd ...")
+  $proc = Start-Process -NoNewWindow -Wait $installerFilePath "/install /silent /norestart ACCEPTEULA=1"
+  Write-Log("Installing tabcmd finished with exit code $($proc.ExitCode)")
+
+  # sleep for 5 seconds
+  Start-Sleep -s 5
+
+  $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") 
+
+  # get port from json file
+  $portString = Select-String -Path ".\ts_settings.json" -Pattern '"port" *:' | select-object -ExpandProperty Line
+  $port = [regex]::match($portString, '(\d+)').Groups[1].Value
+  If([string]::IsNullOrEmpty($port)) {
+    $port = 80
+  }
+
+  # Add an Administrator Account
+  Start-Process -NoNewWindow -Wait tabcmd "initialuser --server http://localhost:$($port) `
+                --username $($appProps."ts.admin.user") --password $($appProps."ts.admin.password")"
+  Write-Log("Created admin account: $($appProps."admin.user")")
+}
 
 Write-Log("Finished.")
