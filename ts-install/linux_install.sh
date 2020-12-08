@@ -228,43 +228,12 @@ if [ "$run_step" -le 5 ]; then
   echo "5. Configuring and initializing initial node ..."
   tsm settings import -f ./ts_settings.json
   tsm pending-changes apply
-  tsm initialize --start-server --request-timeout 1800
+  tsm initialize --start-server --request-timeout 3600
   echo "Configuring and initializing initial node finished"
 fi
 
 if [ "$run_step" -le 6 ]; then
   echo "6. Add an Administrator Account"
-  # download tabcmd installer
-  if [ "$pkg_tool" = "yum" ]; then
-    tabcmd_url="https://downloads.tableau.com/esdalt/${ts_version}/tableau-tabcmd-${ts_version//./-}.noarch.rpm"
-  elif [ "$pkg_tool" = "apt" ]; then
-    tabcmd_url="https://downloads.tableau.com/esdalt/${ts_version}/tableau-tabcmd-${ts_version//./-}_all.deb"
-  fi
-  
-  tabcmd_file_path="./download/${tabcmd_url##*/}"
-  if [ -f "${tabcmd_file_path}" ]; then
-    echo "${tabcmd_file_path} exists"
-  else
-    echo "Downloading tabcmd installer from $tabcmd_url"
-    curl --fail -o "${tabcmd_file_path}" "$tabcmd_url"
-    retVal=$?
-    if [ $retVal -gt 0 ]; then
-      echo "Downloading tabcmd installer failed. error code: $retVal"
-      exit 1
-    fi
-    echo "Downloading tabcmd installer finished"
-  fi
-
-  # install tabcmd
-  echo "Installing tabcmd ..."
-  if [ "$pkg_tool" = "yum" ]; then
-    yum -y install $tabcmd_file_path
-  elif [ "$pkg_tool" = "apt" ]; then
-    gdebi -n $tabcmd_file_path
-  fi
-  echo "Installing tabcmd finished"
-  
-  source /etc/profile.d/tabcmd.sh
 
   # add admin user
   echo "Adding admin user ..."

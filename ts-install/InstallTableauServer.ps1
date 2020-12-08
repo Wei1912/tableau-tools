@@ -63,6 +63,10 @@ for ($i = 0; $i -lt $vs.Length; $i++) {
   $versionArray[$i] = [int]$vs[$i]
 }
 
+$curPath = $PSScriptRoot
+Set-Location -Path $curPath
+Write-Log($PWD)
+
 # check config
 $appProps = ConvertFrom-StringData (get-content ./settings.properties -raw)
 $productKey = $appProps."ts.product.key"
@@ -71,10 +75,6 @@ if ([string]::IsNullOrEmpty($productKey)) {
 }
 
 Write-Log("Will install Tableau Server $($tsVersion)")
-
-$curPath = $PSScriptRoot
-Set-Location -Path $curPath
-Write-Log($PWD)
 
 # create download folder
 $downloadPath = Join-Path -Path $curPath -ChildPath "download"
@@ -133,36 +133,15 @@ if ($runStep -le 4) {
   Write-Log("4. Configuring and initializing initial node ...")
   Start-Process -NoNewWindow -Wait tsm "settings import -f ./ts_settings.json"
   Start-Process -NoNewWindow -Wait tsm "pending-changes apply --ignore-prompt"
-  Start-Process -NoNewWindow -Wait tsm "initialize --start-server --request-timeout 1800"
+  Start-Process -NoNewWindow -Wait tsm "initialize --start-server --request-timeout 3600"
+
+  # TODO: should check the return code of tsm initialize, should stop installtation if it fails.
+
   Write-Log("Configuring and initializing initial node finished")
 }
 
 if ($runStep -le 5) {
   Write-Log("5. Adding an Administrator Account ...")
-
-  # download tabcmd installer
-  $url = "https://downloads.tableau.com/esdalt/$($tsVersion)/TableauServerTabcmd-64bit-$($tsVersion.Replace('.', '-')).exe"
-  $installerFileName = $url.Substring($url.LastIndexOf("/") + 1)
-  $installerFilePath = Join-Path -Path $downloadPath -ChildPath $installerFileName
-
-  If(Test-Path $installerFilePath -PathType Leaf) {
-    Write-Log("$($installerFilePath) exists, skip downloading")
-  } else {
-    Write-Log("Downloading tabcmd installer from $($url)")
-    (New-Object System.Net.WebClient).DownloadFile($url, $installerFilePath)
-    Start-Sleep -s 5
-    Write-Log("Downloading tabcmd installer finished")
-  }
-
-  # install tabcmd
-  Write-Log("Installing tabcmd ...")
-  $proc = Start-Process -NoNewWindow -Wait $installerFilePath "/install /silent /norestart ACCEPTEULA=1"
-  Write-Log("Installing tabcmd finished with exit code $($proc.ExitCode)")
-
-  # sleep for 5 seconds
-  Start-Sleep -s 5
-
-  $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User") 
 
   # get port from json file
   $portString = Select-String -Path ".\ts_settings.json" -Pattern '"port" *:' | select-object -ExpandProperty Line
